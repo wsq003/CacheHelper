@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace Common.Utils
 {
 	/// <summary>
-	/// 
+	/// Cache result of functions, to boost performance.
 	/// </summary>
 	public static class CacheHelper
 	{
@@ -19,7 +19,7 @@ namespace Common.Utils
 		private static string nullstr = "ajktNullHolder";
 
 		/// <summary>
-		/// 
+		/// Cache result of functions, to boost performance.
 		/// </summary>
 		/// <typeparam name="T"></typeparam>
 		/// <param name="key"></param>
@@ -98,6 +98,8 @@ namespace Common.Utils
 			mc.Remove(key);
 		}
 
+		#region WithCacheRefresh
+
 		private class CacheInfo
 		{
 			public string key = "";
@@ -121,7 +123,7 @@ namespace Common.Utils
 		private static ConcurrentDictionary<string, CacheInfo> dicCacheInfo = new ConcurrentDictionary<string, CacheInfo>();
 
 		/// <summary>
-		/// 
+		/// Cache result of functions, to boost performance. Will try refresh cache before expire.
 		/// </summary>
 		/// <typeparam name="T"></typeparam>
 		/// <param name="key"></param>
@@ -129,7 +131,7 @@ namespace Common.Utils
 		/// <param name="arg"></param>
 		/// <param name="cacheMilli"></param>
 		/// <returns></returns>
-		public static T? WithCacheRefresh<T>(string key, Func<T> getData, double cacheMilli = 1000)
+		public static T? WithCacheRefresh<T>(string key, Func<T> getData, double cacheMilli = 1000, bool cacheNullResult = false)
 		{
 			var info = dicCacheInfo.GetOrAdd(key, new CacheInfo()
 			{
@@ -218,7 +220,7 @@ namespace Common.Utils
 			info.isRefreshing = false;
 		}
 
-		public static async Task<T?> WithCacheRefreshAsync<T>(string key, Func<Task<T?>> getData, double cacheMilli = 1000)
+		public static async Task<T?> WithCacheRefreshAsync<T>(string key, Func<Task<T?>> getData, double cacheMilli = 1000, bool cacheNullResult = false)
 		{
 			var info = dicCacheInfo.GetOrAdd(key, new CacheInfo()
 			{
@@ -235,7 +237,7 @@ namespace Common.Utils
 				{
 					info.isRefreshing = true;
 
-					Thread th = new Thread(new ThreadStart(async () => await CheckRefreshCacheAsync(key, getData, cacheMilli)));
+					Thread th = new Thread(new ThreadStart(async () => await CheckRefreshCacheAsync(key, getData, cacheMilli, cacheNullResult)));
 					th.Name = "WithCacheConcurrent_refresh";
 					th.IsBackground = true;
 					th.Start();
@@ -255,8 +257,10 @@ namespace Common.Utils
 				T? dd = await getData();
 				if (dd == null)
 				{
-					mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
-					dd = default(T);
+					if (cacheNullResult)
+					{
+						mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
+					}
 				}
 				else
 				{
@@ -271,7 +275,7 @@ namespace Common.Utils
 		}
 
 
-		private static async Task CheckRefreshCacheAsync<T>(string key, Func<Task<T>> getData, double cacheMilli)
+		private static async Task CheckRefreshCacheAsync<T>(string key, Func<Task<T>> getData, double cacheMilli, bool cacheNullResult)
 		{
 			dicCacheInfo.TryGetValue(key, out CacheInfo? info);
 			if (info == null)
@@ -284,8 +288,10 @@ namespace Common.Utils
 				T? dd = await getData();
 				if (dd == null)
 				{
-					mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
-					dd = default(T);
+					if (cacheNullResult)
+					{
+						mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
+					}
 				}
 				else
 				{
@@ -300,5 +306,7 @@ namespace Common.Utils
 			}
 			info.isRefreshing = false;
 		}
+
+		#endregion
 	}
 }
