@@ -18,6 +18,8 @@ namespace Common.Utils
 
 		private static string nullstr = "ajktNullHolder";
 
+		static ConcurrentDictionary<string, SemaphoreSlim> dicLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
+
 		/// <summary>
 		/// Cache result of functions, to boost performance.
 		/// </summary>
@@ -41,22 +43,45 @@ namespace Common.Utils
 				}
 				return (T)obj;
 			}
-			else
+
+			var sem = dicLocks.GetOrAdd(key, new SemaphoreSlim(1, 1));
+			try
 			{
-				T? dd = getData();
-				if (dd == null)
+				sem.Wait();
+
+				obj = mc.Get(key);
+				if (obj != null)
 				{
-					if (cacheNullResult)
+					if (obj is string)
 					{
-						mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
-						dd = default(T);
+						if (obj as string == nullstr)
+						{
+							return default(T);
+						}
 					}
+					return (T)obj;
 				}
 				else
 				{
-					mc.Set(key, dd, DateTime.Now.AddMilliseconds(cacheMilli));
+					T? dd = getData();
+					if (dd == null)
+					{
+						if (cacheNullResult)
+						{
+							mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
+							dd = default(T);
+						}
+					}
+					else
+					{
+						mc.Set(key, dd, DateTime.Now.AddMilliseconds(cacheMilli));
+					}
+					return dd;
 				}
-				return dd;
+			}
+			finally
+			{
+				sem.Release();
 			}
 		}
 
@@ -74,22 +99,45 @@ namespace Common.Utils
 				}
 				return (T)obj;
 			}
-			else
+
+			var sem = dicLocks.GetOrAdd(key, new SemaphoreSlim(1, 1));
+			try
 			{
-				var dd = await getData();
-				if (dd == null)
+				await sem.WaitAsync();
+
+				obj = mc.Get(key);
+				if (obj != null)
 				{
-					if (cacheNullResult)
+					if (obj is string)
 					{
-						mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
-						dd = default(T);
+						if (obj as string == nullstr)
+						{
+							return default(T);
+						}
 					}
+					return (T)obj;
 				}
 				else
 				{
-					mc.Set(key, dd, DateTime.Now.AddMilliseconds(cacheMilli));
+					var dd = await getData();
+					if (dd == null)
+					{
+						if (cacheNullResult)
+						{
+							mc.Set(key, nullstr, DateTime.Now.AddMilliseconds(cacheMilli));
+							dd = default(T);
+						}
+					}
+					else
+					{
+						mc.Set(key, dd, DateTime.Now.AddMilliseconds(cacheMilli));
+					}
+					return dd;
 				}
-				return dd;
+			}
+			finally
+			{
+				sem.Release();
 			}
 		}
 
